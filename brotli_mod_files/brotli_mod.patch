@@ -1,0 +1,1465 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4ff3401..1571b68 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -96,6 +96,8 @@ math(EXPR BROTLI_ABI_AGE "${_brotli_abi_info} & 4095")
+ math(EXPR BROTLI_ABI_COMPATIBILITY "${BROTLI_ABI_CURRENT} - ${BROTLI_ABI_AGE}")
+ mark_as_advanced(BROTLI_ABI_CURRENT BROTLI_ABI_REVISION BROTLI_ABI_AGE BROTLI_ABI_COMPATIBILITY)
+ 
++add_definitions(-DBROTLI_BUILD_PORTABLE)
++
+ if (ENABLE_SANITIZER)
+   set(CMAKE_C_FLAGS " ${CMAKE_C_FLAGS} -fsanitize=${ENABLE_SANITIZER}")
+   set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} -fsanitize=${ENABLE_SANITIZER}")
+diff --git a/c/common/platform.h b/c/common/platform.h
+index 7e5807d..186e38b 100644
+--- a/c/common/platform.h
++++ b/c/common/platform.h
+@@ -310,148 +310,149 @@ static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
+   memcpy(p, &v, sizeof v);
+ }
+ #else  /* BROTLI_ALIGNED_READ */
+-/* Unaligned memory access is allowed: just cast pointer to requested type. */
+-#if BROTLI_SANITIZED
+-/* Consider we have an unaligned load/store of 4 bytes from address 0x...05.
+-   AddressSanitizer will treat it as a 3-byte access to the range 05:07 and
+-   will miss a bug if 08 is the first unaddressable byte.
+-   ThreadSanitizer will also treat this as a 3-byte access to 05:07 and will
+-   miss a race between this access and some other accesses to 08.
+-   MemorySanitizer will correctly propagate the shadow on unaligned stores
+-   and correctly report bugs on unaligned loads, but it may not properly
+-   update and report the origin of the uninitialized memory.
+-   For all three tools, replacing an unaligned access with a tool-specific
+-   callback solves the problem. */
+-#if defined(__cplusplus)
+-extern "C" {
+-#endif  /* __cplusplus */
+-  uint16_t __sanitizer_unaligned_load16(const void* p);
+-  uint32_t __sanitizer_unaligned_load32(const void* p);
+-  uint64_t __sanitizer_unaligned_load64(const void* p);
+-  void __sanitizer_unaligned_store64(void* p, uint64_t v);
+-#if defined(__cplusplus)
+-}  /* extern "C" */
+-#endif  /* __cplusplus */
+-#define BrotliUnalignedRead16 __sanitizer_unaligned_load16
+-#define BrotliUnalignedRead32 __sanitizer_unaligned_load32
+-#define BrotliUnalignedRead64 __sanitizer_unaligned_load64
+-#define BrotliUnalignedWrite64 __sanitizer_unaligned_store64
+-#else  /* BROTLI_SANITIZED */
+-static BROTLI_INLINE uint16_t BrotliUnalignedRead16(const void* p) {
+-  return *(const uint16_t*)p;
+-}
+-static BROTLI_INLINE uint32_t BrotliUnalignedRead32(const void* p) {
+-  return *(const uint32_t*)p;
+-}
+-#if (BROTLI_64_BITS)
+-static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
+-  return *(const uint64_t*)p;
+-}
+-static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
+-  *(uint64_t*)p = v;
+-}
+-#else  /* BROTLI_64_BITS */
+-/* Avoid emitting LDRD / STRD, which require properly aligned address. */
+-/* If __attribute__(aligned) is available, use that. Otherwise, memcpy. */
+-
+-#if BROTLI_GNUC_HAS_ATTRIBUTE(aligned, 2, 7, 0)
+-typedef BROTLI_ALIGNED(1) uint64_t brotli_unaligned_uint64_t;
+-
+-static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
+-  return (uint64_t) ((const brotli_unaligned_uint64_t*) p)[0];
+-}
+-static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
+-  brotli_unaligned_uint64_t* dwords = (brotli_unaligned_uint64_t*) p;
+-  dwords[0] = (brotli_unaligned_uint64_t) v;
+-}
+-#else /* BROTLI_GNUC_HAS_ATTRIBUTE(aligned, 2, 7, 0) */
+-static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
+-  uint64_t v;
+-  memcpy(&v, p, sizeof(uint64_t));
+-  return v;
+-}
+-
+-static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
+-  memcpy(p, &v, sizeof(uint64_t));
+-}
+-#endif  /* BROTLI_GNUC_HAS_ATTRIBUTE(aligned, 2, 7, 0) */
+-#endif  /* BROTLI_64_BITS */
+-#endif  /* BROTLI_SANITIZED */
++// /* Unaligned memory access is allowed: just cast pointer to requested type. */
++// #if BROTLI_SANITIZED
++// /* Consider we have an unaligned load/store of 4 bytes from address 0x...05.
++//    AddressSanitizer will treat it as a 3-byte access to the range 05:07 and
++//    will miss a bug if 08 is the first unaddressable byte.
++//    ThreadSanitizer will also treat this as a 3-byte access to 05:07 and will
++//    miss a race between this access and some other accesses to 08.
++//    MemorySanitizer will correctly propagate the shadow on unaligned stores
++//    and correctly report bugs on unaligned loads, but it may not properly
++//    update and report the origin of the uninitialized memory.
++//    For all three tools, replacing an unaligned access with a tool-specific
++//    callback solves the problem. */
++// #if defined(__cplusplus)
++// extern "C" {
++// #endif  /* __cplusplus */
++//   uint16_t __sanitizer_unaligned_load16(const void* p);
++//   uint32_t __sanitizer_unaligned_load32(const void* p);
++//   uint64_t __sanitizer_unaligned_load64(const void* p);
++//   void __sanitizer_unaligned_store64(void* p, uint64_t v);
++// #if defined(__cplusplus)
++// }  /* extern "C" */
++// #endif  /* __cplusplus */
++// #define BrotliUnalignedRead16 __sanitizer_unaligned_load16
++// #define BrotliUnalignedRead32 __sanitizer_unaligned_load32
++// #define BrotliUnalignedRead64 __sanitizer_unaligned_load64
++// #define BrotliUnalignedWrite64 __sanitizer_unaligned_store64
++// #else  /* BROTLI_SANITIZED */
++// static BROTLI_INLINE uint16_t BrotliUnalignedRead16(const void* p) {
++//   return *(const uint16_t*)p;
++// }
++// static BROTLI_INLINE uint32_t BrotliUnalignedRead32(const void* p) {
++//   return *(const uint32_t*)p;
++// }
++// #if (BROTLI_64_BITS)
++// static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
++//   return *(const uint64_t*)p;
++// }
++// static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
++//   *(uint64_t*)p = v;
++// }
++// #else  /* BROTLI_64_BITS */
++// /* Avoid emitting LDRD / STRD, which require properly aligned address. */
++// /* If __attribute__(aligned) is available, use that. Otherwise, memcpy. */
++
++// #if BROTLI_GNUC_HAS_ATTRIBUTE(aligned, 2, 7, 0)
++// typedef BROTLI_ALIGNED(1) uint64_t brotli_unaligned_uint64_t;
++
++// static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
++//   return (uint64_t) ((const brotli_unaligned_uint64_t*) p)[0];
++// }
++// static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
++//   brotli_unaligned_uint64_t* dwords = (brotli_unaligned_uint64_t*) p;
++//   dwords[0] = (brotli_unaligned_uint64_t) v;
++// }
++// #else /* BROTLI_GNUC_HAS_ATTRIBUTE(aligned, 2, 7, 0) */
++// static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
++//   uint64_t v;
++//   memcpy(&v, p, sizeof(uint64_t));
++//   return v;
++// }
++
++// static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
++//   memcpy(p, &v, sizeof(uint64_t));
++// }
++// #endif  /* BROTLI_GNUC_HAS_ATTRIBUTE(aligned, 2, 7, 0) */
++// #endif  /* BROTLI_64_BITS */
++// #endif  /* BROTLI_SANITIZED */
+ #endif  /* BROTLI_ALIGNED_READ */
+ 
+-#if BROTLI_LITTLE_ENDIAN
++//#if BROTLI_LITTLE_ENDIAN
++// JN: we will assume little endian to help the pointer analysis
+ /* Straight endianness. Just read / write values. */
+ #define BROTLI_UNALIGNED_LOAD16LE BrotliUnalignedRead16
+ #define BROTLI_UNALIGNED_LOAD32LE BrotliUnalignedRead32
+ #define BROTLI_UNALIGNED_LOAD64LE BrotliUnalignedRead64
+ #define BROTLI_UNALIGNED_STORE64LE BrotliUnalignedWrite64
+-#elif BROTLI_BIG_ENDIAN  /* BROTLI_LITTLE_ENDIAN */
+-/* Explain compiler to byte-swap values. */
+-#define BROTLI_BSWAP16_(V) ((uint16_t)( \
+-  (((V) & 0xFFU) << 8) | \
+-  (((V) >> 8) & 0xFFU)))
+-static BROTLI_INLINE uint16_t BROTLI_UNALIGNED_LOAD16LE(const void* p) {
+-  uint16_t value = BrotliUnalignedRead16(p);
+-  return BROTLI_BSWAP16_(value);
+-}
+-#define BROTLI_BSWAP32_(V) ( \
+-  (((V) & 0xFFU) << 24) | (((V) & 0xFF00U) << 8) | \
+-  (((V) >> 8) & 0xFF00U) | (((V) >> 24) & 0xFFU))
+-static BROTLI_INLINE uint32_t BROTLI_UNALIGNED_LOAD32LE(const void* p) {
+-  uint32_t value = BrotliUnalignedRead32(p);
+-  return BROTLI_BSWAP32_(value);
+-}
+-#define BROTLI_BSWAP64_(V) ( \
+-  (((V) & 0xFFU) << 56) | (((V) & 0xFF00U) << 40) | \
+-  (((V) & 0xFF0000U) << 24) | (((V) & 0xFF000000U) << 8) | \
+-  (((V) >> 8) & 0xFF000000U) | (((V) >> 24) & 0xFF0000U) | \
+-  (((V) >> 40) & 0xFF00U) | (((V) >> 56) & 0xFFU))
+-static BROTLI_INLINE uint64_t BROTLI_UNALIGNED_LOAD64LE(const void* p) {
+-  uint64_t value = BrotliUnalignedRead64(p);
+-  return BROTLI_BSWAP64_(value);
+-}
+-static BROTLI_INLINE void BROTLI_UNALIGNED_STORE64LE(void* p, uint64_t v) {
+-  uint64_t value = BROTLI_BSWAP64_(v);
+-  BrotliUnalignedWrite64(p, value);
+-}
+-#else  /* BROTLI_LITTLE_ENDIAN */
+-/* Read / store values byte-wise; hopefully compiler will understand. */
+-static BROTLI_INLINE uint16_t BROTLI_UNALIGNED_LOAD16LE(const void* p) {
+-  const uint8_t* in = (const uint8_t*)p;
+-  return (uint16_t)(in[0] | (in[1] << 8));
+-}
+-static BROTLI_INLINE uint32_t BROTLI_UNALIGNED_LOAD32LE(const void* p) {
+-  const uint8_t* in = (const uint8_t*)p;
+-  uint32_t value = (uint32_t)(in[0]);
+-  value |= (uint32_t)(in[1]) << 8;
+-  value |= (uint32_t)(in[2]) << 16;
+-  value |= (uint32_t)(in[3]) << 24;
+-  return value;
+-}
+-static BROTLI_INLINE uint64_t BROTLI_UNALIGNED_LOAD64LE(const void* p) {
+-  const uint8_t* in = (const uint8_t*)p;
+-  uint64_t value = (uint64_t)(in[0]);
+-  value |= (uint64_t)(in[1]) << 8;
+-  value |= (uint64_t)(in[2]) << 16;
+-  value |= (uint64_t)(in[3]) << 24;
+-  value |= (uint64_t)(in[4]) << 32;
+-  value |= (uint64_t)(in[5]) << 40;
+-  value |= (uint64_t)(in[6]) << 48;
+-  value |= (uint64_t)(in[7]) << 56;
+-  return value;
+-}
+-static BROTLI_INLINE void BROTLI_UNALIGNED_STORE64LE(void* p, uint64_t v) {
+-  uint8_t* out = (uint8_t*)p;
+-  out[0] = (uint8_t)v;
+-  out[1] = (uint8_t)(v >> 8);
+-  out[2] = (uint8_t)(v >> 16);
+-  out[3] = (uint8_t)(v >> 24);
+-  out[4] = (uint8_t)(v >> 32);
+-  out[5] = (uint8_t)(v >> 40);
+-  out[6] = (uint8_t)(v >> 48);
+-  out[7] = (uint8_t)(v >> 56);
+-}
+-#endif  /* BROTLI_LITTLE_ENDIAN */
++//#elif BROTLI_BIG_ENDIAN  /* BROTLI_LITTLE_ENDIAN */
++// /* Explain compiler to byte-swap values. */
++// #define BROTLI_BSWAP16_(V) ((uint16_t)( \
++//   (((V) & 0xFFU) << 8) | \
++//   (((V) >> 8) & 0xFFU)))
++// static BROTLI_INLINE uint16_t BROTLI_UNALIGNED_LOAD16LE(const void* p) {
++//   uint16_t value = BrotliUnalignedRead16(p);
++//   return BROTLI_BSWAP16_(value);
++// }
++// #define BROTLI_BSWAP32_(V) ( \
++//   (((V) & 0xFFU) << 24) | (((V) & 0xFF00U) << 8) | \
++//   (((V) >> 8) & 0xFF00U) | (((V) >> 24) & 0xFFU))
++// static BROTLI_INLINE uint32_t BROTLI_UNALIGNED_LOAD32LE(const void* p) {
++//   uint32_t value = BrotliUnalignedRead32(p);
++//   return BROTLI_BSWAP32_(value);
++// }
++// #define BROTLI_BSWAP64_(V) ( \
++//   (((V) & 0xFFU) << 56) | (((V) & 0xFF00U) << 40) | \
++//   (((V) & 0xFF0000U) << 24) | (((V) & 0xFF000000U) << 8) | \
++//   (((V) >> 8) & 0xFF000000U) | (((V) >> 24) & 0xFF0000U) | \
++//   (((V) >> 40) & 0xFF00U) | (((V) >> 56) & 0xFFU))
++// static BROTLI_INLINE uint64_t BROTLI_UNALIGNED_LOAD64LE(const void* p) {
++//   uint64_t value = BrotliUnalignedRead64(p);
++//   return BROTLI_BSWAP64_(value);
++// }
++// static BROTLI_INLINE void BROTLI_UNALIGNED_STORE64LE(void* p, uint64_t v) {
++//   uint64_t value = BROTLI_BSWAP64_(v);
++//   BrotliUnalignedWrite64(p, value);
++// }
++// #else  /* BROTLI_LITTLE_ENDIAN */
++// /* Read / store values byte-wise; hopefully compiler will understand. */
++// static BROTLI_INLINE uint16_t BROTLI_UNALIGNED_LOAD16LE(const void* p) {
++//   const uint8_t* in = (const uint8_t*)p;
++//   return (uint16_t)(in[0] | (in[1] << 8));
++// }
++// static BROTLI_INLINE uint32_t BROTLI_UNALIGNED_LOAD32LE(const void* p) {
++//   const uint8_t* in = (const uint8_t*)p;
++//   uint32_t value = (uint32_t)(in[0]);
++//   value |= (uint32_t)(in[1]) << 8;
++//   value |= (uint32_t)(in[2]) << 16;
++//   value |= (uint32_t)(in[3]) << 24;
++//   return value;
++// }
++// static BROTLI_INLINE uint64_t BROTLI_UNALIGNED_LOAD64LE(const void* p) {
++//   const uint8_t* in = (const uint8_t*)p;
++//   uint64_t value = (uint64_t)(in[0]);
++//   value |= (uint64_t)(in[1]) << 8;
++//   value |= (uint64_t)(in[2]) << 16;
++//   value |= (uint64_t)(in[3]) << 24;
++//   value |= (uint64_t)(in[4]) << 32;
++//   value |= (uint64_t)(in[5]) << 40;
++//   value |= (uint64_t)(in[6]) << 48;
++//   value |= (uint64_t)(in[7]) << 56;
++//   return value;
++// }
++// static BROTLI_INLINE void BROTLI_UNALIGNED_STORE64LE(void* p, uint64_t v) {
++//   uint8_t* out = (uint8_t*)p;
++//   out[0] = (uint8_t)v;
++//   out[1] = (uint8_t)(v >> 8);
++//   out[2] = (uint8_t)(v >> 16);
++//   out[3] = (uint8_t)(v >> 24);
++//   out[4] = (uint8_t)(v >> 32);
++//   out[5] = (uint8_t)(v >> 40);
++//   out[6] = (uint8_t)(v >> 48);
++//   out[7] = (uint8_t)(v >> 56);
++// }
++// #endif  /* BROTLI_LITTLE_ENDIAN */
+ 
+ /* BROTLI_IS_CONSTANT macros returns true for compile-time constants. */
+ #if BROTLI_GNUC_HAS_BUILTIN(__builtin_constant_p, 3, 0, 1) || \
+diff --git a/c/enc/backward_references_hq.c b/c/enc/backward_references_hq.c
+index 5651cae..49bf3c3 100644
+--- a/c/enc/backward_references_hq.c
++++ b/c/enc/backward_references_hq.c
+@@ -196,9 +196,9 @@ static void ZopfliCostModelSetFromCommands(ZopfliCostModel* self,
+ }
+ 
+ static void ZopfliCostModelSetFromLiteralCosts(ZopfliCostModel* self,
+-                                               size_t position,
+-                                               const uint8_t* ringbuffer,
+-                                               size_t ringbuffer_mask) {
++					       size_t position,
++					       const uint8_t* ringbuffer,
++					       size_t ringbuffer_mask) {
+   float* literal_costs = self->literal_costs_;
+   float literal_carry = 0.0;
+   float* cost_dist = self->cost_dist_;
+@@ -736,7 +736,7 @@ void BrotliCreateZopfliBackwardReferences(MemoryManager* m, size_t num_bytes,
+   BROTLI_FREE(m, nodes);
+ }
+ 
+-void BrotliCreateHqZopfliBackwardReferences(MemoryManager* m, size_t num_bytes,
++BROTLI_NOINLINE void BrotliCreateHqZopfliBackwardReferences(MemoryManager* m, size_t num_bytes,
+     size_t position, const uint8_t* ringbuffer, size_t ringbuffer_mask,
+     ContextLut literal_context_lut, const BrotliEncoderParams* params,
+     Hasher* hasher, int* dist_cache, size_t* last_insert_len,
+diff --git a/c/enc/compress_fragment.c b/c/enc/compress_fragment.c
+index 9e50b20..2b74437 100644
+--- a/c/enc/compress_fragment.c
++++ b/c/enc/compress_fragment.c
+@@ -79,6 +79,7 @@ static size_t BuildAndStoreLiteralPrefixCode(MemoryManager* m,
+   uint32_t histogram[256] = { 0 };
+   size_t histogram_total;
+   size_t i;
++  // TODO(JN): comment special case
+   if (input_size < (1 << 15)) {
+     for (i = 0; i < input_size; ++i) {
+       ++histogram[input[i]];
+diff --git a/c/enc/encode.c b/c/enc/encode.c
+index 8d90937..deccf96 100644
+--- a/c/enc/encode.c
++++ b/c/enc/encode.c
+@@ -33,13 +33,52 @@
+ #include "./ringbuffer.h"
+ #include "./utf8_util.h"
+ #include "./write_bits.h"
++#include "./clam.h"
+ 
+ #if defined(__cplusplus) || defined(c_plusplus)
+ extern "C" {
+ #endif
+ 
+-#define COPY_ARRAY(dst, src) memcpy(dst, src, sizeof(src));
++///// BEGIN MODIFICATIONS
++// for rand()
++#include <stdlib.h>
++int __CRAB_nd_int() {
++  // The code of rand() is not available so it will treated as a
++  // function that returns non-deterministically an integer. 
++  return rand() ;
++}
++
++uint8_t __CRAB_nd_uint8_t() {
++  return (uint8_t)rand() ;
++}
++
++uint16_t __CRAB_nd_uint16_t() {
++  return (uint16_t)rand() ;
++}
+ 
++uint32_t __CRAB_nd_uint32_t() {
++  return (uint32_t)rand() ;
++}
++
++  
++uint8_t* __CRAB_nd_uint8_t_ptr() {
++  // warning: be careful not to produce spurious false conditions
++  static uint8_t __CRAB_nd_ptr;
++  return &__CRAB_nd_ptr;
++}
++
++#define DECLARE_FRESH_ARRAY(NAME, SIZE, TYPE)	\
++  TYPE NAME[SIZE];                              \
++  {						\
++  int i;					\
++    for(i=0;i<SIZE;i++) {			\
++    NAME[i] = __CRAB_nd_##TYPE();               \
++    }                                           \
++  }
++///// END MODIFICATIONS  
++  
++#define COPY_ARRAY(dst, src) memcpy(dst, src, sizeof(src));
++  
+ typedef enum BrotliEncoderStreamState {
+   /* Default state. */
+   BROTLI_STREAM_PROCESSING = 0,
+@@ -68,7 +107,7 @@ typedef struct BrotliEncoderStateStruct {
+   MemoryManager memory_manager_;
+ 
+   uint64_t input_pos_;
+-  RingBuffer ringbuffer_;
++  // RingBuffer ringbuffer_;
+   size_t cmd_alloc_size_;
+   Command* commands_;
+   size_t num_commands_;
+@@ -76,8 +115,8 @@ typedef struct BrotliEncoderStateStruct {
+   size_t last_insert_len_;
+   uint64_t last_flush_pos_;
+   uint64_t last_processed_pos_;
+-  int dist_cache_[BROTLI_NUM_DISTANCE_SHORT_CODES];
+-  int saved_dist_cache_[4];
++  //int dist_cache_[BROTLI_NUM_DISTANCE_SHORT_CODES];
++  //int saved_dist_cache_[4];
+   uint16_t last_bytes_;
+   uint8_t last_bytes_bits_;
+   /* "Flint" is a tiny uncompressed block emitted before the continuation
+@@ -89,10 +128,10 @@ typedef struct BrotliEncoderStateStruct {
+   size_t storage_size_;
+   uint8_t* storage_;
+ 
+-  Hasher hasher_;
++  //Hasher hasher_;
+ 
+   /* Hash table for FAST_ONE_PASS_COMPRESSION_QUALITY mode. */
+-  int small_table_[1 << 10];  /* 4KiB */
++  //int small_table_[1 << 10];  /* 4KiB */
+   int* large_table_;          /* Allocated only when needed */
+   size_t large_table_size_;
+   /* Command and distance prefix codes (each 64 symbols, stored back-to-back)
+@@ -103,11 +142,11 @@ typedef struct BrotliEncoderStateStruct {
+        40 - 63: insert length code 0 - 23, copy length code 0
+      Note that symbols 16 and 40 represent the same code in the full alphabet,
+      but we do not use either of them in FAST_ONE_PASS_COMPRESSION_QUALITY. */
+-  uint8_t cmd_depths_[128];
+-  uint16_t cmd_bits_[128];
++  //uint8_t cmd_depths_[128];
++  //uint16_t cmd_bits_[128];
+   /* The compressed form of the command and distance prefix codes for the next
+      block in FAST_ONE_PASS_COMPRESSION_QUALITY. */
+-  uint8_t cmd_code_[512];
++  //uint8_t cmd_code_[512];
+   size_t cmd_code_numbits_;
+   /* Command and literal buffers for FAST_TWO_PASS_COMPRESSION_QUALITY. */
+   uint32_t* command_buf_;
+@@ -244,17 +283,18 @@ static int* GetHashTable(BrotliEncoderState* s, int quality,
+     }
+   }
+ 
+-  if (htsize <= sizeof(s->small_table_) / sizeof(s->small_table_[0])) {
+-    table = s->small_table_;
+-  } else {
+-    if (htsize > s->large_table_size_) {
+-      s->large_table_size_ = htsize;
+-      BROTLI_FREE(m, s->large_table_);
+-      s->large_table_ = BROTLI_ALLOC(m, int, htsize);
+-      if (BROTLI_IS_OOM(m) || BROTLI_IS_NULL(s->large_table_)) return 0;
+-    }
+-    table = s->large_table_;
++  // MODIFICATION: don't use small_table_
++  /* if (htsize <= sizeof(s->small_table_) / sizeof(s->small_table_[0])) { */
++  /*   table = s->small_table_; */
++  /* } else { */
++  if (htsize > s->large_table_size_) {
++    s->large_table_size_ = htsize;
++    BROTLI_FREE(m, s->large_table_);
++    s->large_table_ = BROTLI_ALLOC(m, int, htsize);
++    if (BROTLI_IS_OOM(m) || BROTLI_IS_NULL(s->large_table_)) return 0;
+   }
++  table = s->large_table_;
++  //}
+ 
+   *table_size = htsize;
+   memset(table, 0, htsize * sizeof(*table));
+@@ -701,14 +741,14 @@ static BROTLI_BOOL EnsureInitialized(BrotliEncoderState* s) {
+   if (s->params.stream_offset != 0) {
+     s->flint_ = BROTLI_FLINT_NEEDS_2_BYTES;
+     /* Poison the distance cache. -16 +- 3 is still less than zero (invalid). */
+-    s->dist_cache_[0] = -16;
+-    s->dist_cache_[1] = -16;
+-    s->dist_cache_[2] = -16;
+-    s->dist_cache_[3] = -16;
+-    memcpy(s->saved_dist_cache_, s->dist_cache_, sizeof(s->saved_dist_cache_));
++    /* s->dist_cache_[0] = -16; */
++    /* s->dist_cache_[1] = -16; */
++    /* s->dist_cache_[2] = -16; */
++    /* s->dist_cache_[3] = -16; */
++    /* memcpy(s->saved_dist_cache_, s->dist_cache_, sizeof(s->saved_dist_cache_)); */
+   }
+ 
+-  RingBufferSetup(&s->params, &s->ringbuffer_);
++  // RingBufferSetup(&s->params, &s->ringbuffer_);
+ 
+   /* Initialize last byte with stream header. */
+   {
+@@ -727,9 +767,14 @@ static BROTLI_BOOL EnsureInitialized(BrotliEncoderState* s) {
+     }
+   }
+ 
++  DECLARE_FRESH_ARRAY(fresh_cmd_depths, 128, uint8_t);
++  DECLARE_FRESH_ARRAY(fresh_cmd_bits, 128, uint16_t);
++  DECLARE_FRESH_ARRAY(fresh_cmd_code, 512, uint8_t);
++  
+   if (s->params.quality == FAST_ONE_PASS_COMPRESSION_QUALITY) {
+-    InitCommandPrefixCodes(s->cmd_depths_, s->cmd_bits_,
+-                           s->cmd_code_, &s->cmd_code_numbits_);
++    InitCommandPrefixCodes(fresh_cmd_depths/* s->cmd_depths_*/,
++			   fresh_cmd_bits /*s->cmd_bits_*/,
++                           fresh_cmd_code /*s->cmd_code_*/ , &s->cmd_code_numbits_);
+   }
+ 
+   s->is_initialized_ = BROTLI_TRUE;
+@@ -766,7 +811,7 @@ static void BrotliEncoderInitState(BrotliEncoderState* s) {
+   s->prev_byte2_ = 0;
+   s->storage_size_ = 0;
+   s->storage_ = 0;
+-  HasherInit(&s->hasher_);
++  //HasherInit(&s->hasher_);
+   s->large_table_ = NULL;
+   s->large_table_size_ = 0;
+   s->cmd_code_numbits_ = 0;
+@@ -779,19 +824,19 @@ static void BrotliEncoderInitState(BrotliEncoderState* s) {
+   s->is_last_block_emitted_ = BROTLI_FALSE;
+   s->is_initialized_ = BROTLI_FALSE;
+ 
+-  RingBufferInit(&s->ringbuffer_);
++  // RingBufferInit(&s->ringbuffer_);
+ 
+   s->commands_ = 0;
+   s->cmd_alloc_size_ = 0;
+ 
+-  /* Initialize distance cache. */
+-  s->dist_cache_[0] = 4;
+-  s->dist_cache_[1] = 11;
+-  s->dist_cache_[2] = 15;
+-  s->dist_cache_[3] = 16;
+-  /* Save the state of the distance cache in case we need to restore it for
+-     emitting an uncompressed block. */
+-  memcpy(s->saved_dist_cache_, s->dist_cache_, sizeof(s->saved_dist_cache_));
++  /* /\* Initialize distance cache. *\/ */
++  /* s->dist_cache_[0] = 4; */
++  /* s->dist_cache_[1] = 11; */
++  /* s->dist_cache_[2] = 15; */
++  /* s->dist_cache_[3] = 16; */
++  /* /\* Save the state of the distance cache in case we need to restore it for */
++  /*    emitting an uncompressed block. *\/ */
++  /* memcpy(s->saved_dist_cache_, s->dist_cache_, sizeof(s->saved_dist_cache_)); */
+ }
+ 
+ BrotliEncoderState* BrotliEncoderCreateInstance(
+@@ -820,8 +865,8 @@ static void BrotliEncoderCleanupState(BrotliEncoderState* s) {
+   }
+   BROTLI_FREE(m, s->storage_);
+   BROTLI_FREE(m, s->commands_);
+-  RingBufferFree(m, &s->ringbuffer_);
+-  DestroyHasher(m, &s->hasher_);
++  //RingBufferFree(m, &s->ringbuffer_);
++  //DestroyHasher(m, &s->hasher_);
+   BROTLI_FREE(m, s->large_table_);
+   BROTLI_FREE(m, s->command_buf_);
+   BROTLI_FREE(m, s->literal_buf_);
+@@ -850,9 +895,9 @@ void BrotliEncoderDestroyInstance(BrotliEncoderState* state) {
+ static void CopyInputToRingBuffer(BrotliEncoderState* s,
+                                   const size_t input_size,
+                                   const uint8_t* input_buffer) {
+-  RingBuffer* ringbuffer_ = &s->ringbuffer_;
++  //RingBuffer* ringbuffer_ = &s->ringbuffer_;
+   MemoryManager* m = &s->memory_manager_;
+-  RingBufferWrite(m, input_buffer, input_size, ringbuffer_);
++  //RingBufferWrite(m, input_buffer, input_size, ringbuffer_);
+   if (BROTLI_IS_OOM(m)) return;
+   s->input_pos_ += input_size;
+ 
+@@ -885,7 +930,7 @@ static void CopyInputToRingBuffer(BrotliEncoderState* s,
+ 
+      Only clear during the first round of ring-buffer writes. On
+      subsequent rounds data in the ring-buffer would be affected. */
+-  if (ringbuffer_->pos_ <= ringbuffer_->mask_) {
++  //if (ringbuffer_->pos_ <= ringbuffer_->mask_) {
+     /* This is the first time when the ring buffer is being written.
+        We clear 7 bytes just after the bytes that have been copied from
+        the input buffer.
+@@ -898,8 +943,8 @@ static void CopyInputToRingBuffer(BrotliEncoderState* s,
+        memory. Due to performance reasons, hashing reads data using a
+        LOAD64, which can go 7 bytes beyond the bytes written in the
+        ring-buffer. */
+-    memset(ringbuffer_->buffer_ + ringbuffer_->pos_, 0, 7);
+-  }
++  //  memset(ringbuffer_->buffer_ + ringbuffer_->pos_, 0, 7);
++  // }
+ }
+ 
+ /* Marks all input as processed.
+@@ -914,15 +959,15 @@ static BROTLI_BOOL UpdateLastProcessedPos(BrotliEncoderState* s) {
+ static void ExtendLastCommand(BrotliEncoderState* s, uint32_t* bytes,
+                               uint32_t* wrapped_last_processed_pos) {
+   Command* last_command = &s->commands_[s->num_commands_ - 1];
+-  const uint8_t* data = s->ringbuffer_.buffer_;
+-  const uint32_t mask = s->ringbuffer_.mask_;
++  const uint8_t* data = __CRAB_nd_uint8_t_ptr(); //s->ringbuffer_.buffer_;
++  const uint32_t mask = __CRAB_nd_uint32_t(); //s->ringbuffer_.mask_;
+   uint64_t max_backward_distance =
+       (((uint64_t)1) << s->params.lgwin) - BROTLI_WINDOW_GAP;
+   uint64_t last_copy_len = last_command->copy_len_ & 0x1FFFFFF;
+   uint64_t last_processed_pos = s->last_processed_pos_ - last_copy_len;
+   uint64_t max_distance = last_processed_pos < max_backward_distance ?
+       last_processed_pos : max_backward_distance;
+-  uint64_t cmd_dist = (uint64_t)s->dist_cache_[0];
++  uint64_t cmd_dist = (uint64_t) __CRAB_nd_int(); //s->dist_cache_[0];
+   uint32_t distance_code = CommandRestoreDistanceCode(last_command,
+                                                       &s->params.dist);
+   if (distance_code < BROTLI_NUM_DISTANCE_SHORT_CODES ||
+@@ -969,8 +1014,8 @@ static BROTLI_BOOL EncodeData(
+   ContextType literal_context_mode;
+   ContextLut literal_context_lut;
+ 
+-  data = s->ringbuffer_.buffer_;
+-  mask = s->ringbuffer_.mask_;
++  data = __CRAB_nd_uint8_t_ptr(); //s->ringbuffer_.buffer_;
++  mask = __CRAB_nd_uint32_t(); //s->ringbuffer_.mask_;
+ 
+   /* Adding more blocks after "last" block is forbidden. */
+   if (s->is_last_block_emitted_) return BROTLI_FALSE;
+@@ -1010,13 +1055,18 @@ static BROTLI_BOOL EncodeData(
+     storage[1] = (uint8_t)(s->last_bytes_ >> 8);
+     table = GetHashTable(s, s->params.quality, bytes, &table_size);
+     if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
++
++    DECLARE_FRESH_ARRAY(fresh_cmd_depths, 128, uint8_t);
++    DECLARE_FRESH_ARRAY(fresh_cmd_bits, 128, uint16_t);
++    DECLARE_FRESH_ARRAY(fresh_cmd_code, 512, uint8_t);  
++    
+     if (s->params.quality == FAST_ONE_PASS_COMPRESSION_QUALITY) {
+       BrotliCompressFragmentFast(
+           m, &data[wrapped_last_processed_pos & mask],
+           bytes, is_last,
+           table, table_size,
+-          s->cmd_depths_, s->cmd_bits_,
+-          &s->cmd_code_numbits_, s->cmd_code_,
++          fresh_cmd_depths /*s->cmd_depths_*/, fresh_cmd_bits /*s->cmd_bits_*/,
++          &s->cmd_code_numbits_, fresh_cmd_code /*s->cmd_code_*/,
+           &storage_ix, storage);
+       if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+     } else {
+@@ -1035,7 +1085,7 @@ static BROTLI_BOOL EncodeData(
+     *out_size = storage_ix >> 3;
+     return BROTLI_TRUE;
+   }
+-
++  
+   {
+     /* Theoretical max number of commands is 1 per 2 bytes. */
+     size_t newsize = s->num_commands_ + bytes / 2 + 1;
+@@ -1055,8 +1105,13 @@ static BROTLI_BOOL EncodeData(
+     }
+   }
+ 
+-  InitOrStitchToPreviousBlock(m, &s->hasher_, data, mask, &s->params,
+-      wrapped_last_processed_pos, bytes, is_last);
++  
++  // JN: this seems to cause collapses
++  Hasher fresh_hasher;
++  HasherInit(&fresh_hasher);
++
++  InitOrStitchToPreviousBlock(m, &fresh_hasher /*&s->hasher_*/, data, mask, &s->params,
++  			      wrapped_last_processed_pos, bytes, is_last);
+ 
+   literal_context_mode = ChooseContextMode(
+       &s->params, data, WrapPosition(s->last_flush_pos_),
+@@ -1069,11 +1124,13 @@ static BROTLI_BOOL EncodeData(
+     ExtendLastCommand(s, &bytes, &wrapped_last_processed_pos);
+   }
+ 
++  DECLARE_FRESH_ARRAY(fresh_dist_cache, BROTLI_NUM_DISTANCE_SHORT_CODES, int)
++    
+   if (s->params.quality == ZOPFLIFICATION_QUALITY) {
+     BROTLI_DCHECK(s->params.hasher.type == 10);
+     BrotliCreateZopfliBackwardReferences(m, bytes, wrapped_last_processed_pos,
+         data, mask, literal_context_lut, &s->params,
+-        &s->hasher_, s->dist_cache_,
++	&fresh_hasher /*&s->hasher_*/, fresh_dist_cache /*s->dist_cache_*/,
+         &s->last_insert_len_, &s->commands_[s->num_commands_],
+         &s->num_commands_, &s->num_literals_);
+     if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+@@ -1081,18 +1138,19 @@ static BROTLI_BOOL EncodeData(
+     BROTLI_DCHECK(s->params.hasher.type == 10);
+     BrotliCreateHqZopfliBackwardReferences(m, bytes, wrapped_last_processed_pos,
+         data, mask, literal_context_lut, &s->params,
+-        &s->hasher_, s->dist_cache_,
++	&fresh_hasher/*&s->hasher_*/, fresh_dist_cache /*s->dist_cache_*/,
+         &s->last_insert_len_, &s->commands_[s->num_commands_],
+         &s->num_commands_, &s->num_literals_);
+     if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+   } else {
+     BrotliCreateBackwardReferences(bytes, wrapped_last_processed_pos,
+         data, mask, literal_context_lut, &s->params,
+-        &s->hasher_, s->dist_cache_,
++	&fresh_hasher/*&s->hasher_*/, fresh_dist_cache /*s->dist_cache_*/,
+         &s->last_insert_len_, &s->commands_[s->num_commands_],
+         &s->num_commands_, &s->num_literals_);
+   }
+ 
++  
+   {
+     const size_t max_length = MaxMetablockSize(&s->params);
+     const size_t max_literals = max_length / 8;
+@@ -1112,9 +1170,9 @@ static BROTLI_BOOL EncodeData(
+         s->num_literals_ < max_literals &&
+         s->num_commands_ < max_commands) {
+       /* Merge with next input block. Everything will happen later. */
+-      if (UpdateLastProcessedPos(s)) {
+-        HasherReset(&s->hasher_);
+-      }
++      /* if (UpdateLastProcessedPos(s)) { */
++      /*   HasherReset(&s->hasher_); */
++      /* } */
+       *out_size = 0;
+       return BROTLI_TRUE;
+     }
+@@ -1144,18 +1202,22 @@ static BROTLI_BOOL EncodeData(
+     if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+     storage[0] = (uint8_t)s->last_bytes_;
+     storage[1] = (uint8_t)(s->last_bytes_ >> 8);
++    DECLARE_FRESH_ARRAY(fresh_dist_cache, BROTLI_NUM_DISTANCE_SHORT_CODES, int)
++    DECLARE_FRESH_ARRAY(fresh_save_dist_cache, 4, int)
++    
+     WriteMetaBlockInternal(
+         m, data, mask, s->last_flush_pos_, metablock_size, is_last,
+         literal_context_mode, &s->params, s->prev_byte_, s->prev_byte2_,
+-        s->num_literals_, s->num_commands_, s->commands_, s->saved_dist_cache_,
+-        s->dist_cache_, &storage_ix, storage);
++        s->num_literals_, s->num_commands_, s->commands_, fresh_save_dist_cache /*s->saved_dist_cache_*/,
++        fresh_dist_cache /*s->dist_cache_*/, &storage_ix, storage);
++    
+     if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+     s->last_bytes_ = (uint16_t)(storage[storage_ix >> 3]);
+     s->last_bytes_bits_ = storage_ix & 7u;
+     s->last_flush_pos_ = s->input_pos_;
+-    if (UpdateLastProcessedPos(s)) {
+-      HasherReset(&s->hasher_);
+-    }
++    /* if (UpdateLastProcessedPos(s)) { */
++    /*   HasherReset(&s->hasher_); */
++    /* } */
+     if (s->last_flush_pos_ > 0) {
+       s->prev_byte_ = data[((uint32_t)s->last_flush_pos_ - 1) & mask];
+     }
+@@ -1166,7 +1228,7 @@ static BROTLI_BOOL EncodeData(
+     s->num_literals_ = 0;
+     /* Save the state of the distance cache in case we need to restore it for
+        emitting an uncompressed block. */
+-    memcpy(s->saved_dist_cache_, s->dist_cache_, sizeof(s->saved_dist_cache_));
++    // memcpy(s->saved_dist_cache_, s->dist_cache_, sizeof(s->saved_dist_cache_));
+     *output = &storage[0];
+     *out_size = storage_ix >> 3;
+     return BROTLI_TRUE;
+@@ -1551,7 +1613,7 @@ static void InjectBytePaddingBlock(BrotliEncoderState* s) {
+   if (s->next_out_) {
+     destination = s->next_out_ + s->available_out_;
+   } else {
+-    destination = s->tiny_buf_.u8;
++    //destination = s->tiny_buf_.u8;
+     s->next_out_ = destination;
+   }
+   destination[0] = (uint8_t)seal;
+@@ -1675,10 +1737,16 @@ static BROTLI_BOOL BrotliEncoderCompressStreamFast(
+       table = GetHashTable(s, s->params.quality, block_size, &table_size);
+       if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+ 
++      DECLARE_FRESH_ARRAY(fresh_cmd_depths, 128, uint8_t);
++      DECLARE_FRESH_ARRAY(fresh_cmd_bits, 128, uint16_t);
++      DECLARE_FRESH_ARRAY(fresh_cmd_code, 512, uint8_t);  
++    
++      
+       if (s->params.quality == FAST_ONE_PASS_COMPRESSION_QUALITY) {
+         BrotliCompressFragmentFast(m, *next_in, block_size, is_last, table,
+-            table_size, s->cmd_depths_, s->cmd_bits_, &s->cmd_code_numbits_,
+-            s->cmd_code_, &storage_ix, storage);
++				   table_size, fresh_cmd_depths /*s->cmd_depths_*/,
++				   fresh_cmd_bits /* s->cmd_bits_*/, &s->cmd_code_numbits_,
++				   fresh_cmd_code /*s->cmd_code_*/, &storage_ix, storage);
+         if (BROTLI_IS_OOM(m)) return BROTLI_FALSE;
+       } else {
+         BrotliCompressFragmentTwoPass(m, *next_in, block_size, is_last,
+@@ -1746,7 +1814,7 @@ static BROTLI_BOOL ProcessMetadata(
+     }
+ 
+     if (s->stream_state_ == BROTLI_STREAM_METADATA_HEAD) {
+-      s->next_out_ = s->tiny_buf_.u8;
++      //s->next_out_ = s->tiny_buf_.u8;
+       s->available_out_ =
+           WriteMetadataHeader(s, s->remaining_metadata_bytes_, s->next_out_);
+       s->stream_state_ = BROTLI_STREAM_METADATA_BODY;
+@@ -1772,7 +1840,7 @@ static BROTLI_BOOL ProcessMetadata(
+       } else {
+         /* This guarantees progress in "TakeOutput" workflow. */
+         uint32_t copy = BROTLI_MIN(uint32_t, s->remaining_metadata_bytes_, 16);
+-        s->next_out_ = s->tiny_buf_.u8;
++        //s->next_out_ = s->tiny_buf_.u8;
+         memcpy(s->next_out_, *next_in, copy);
+         *next_in += copy;
+         *available_in -= copy;
+@@ -1832,6 +1900,7 @@ BROTLI_BOOL BrotliEncoderCompressStream(
+     return BrotliEncoderCompressStreamFast(s, op, available_in, next_in,
+         available_out, next_out, total_out);
+   }
++
+   while (BROTLI_TRUE) {
+     size_t remaining_block_size = RemainingInputBlockSize(s);
+     /* Shorten input to flint size. */
+diff --git a/c/enc/find_match_length.h b/c/enc/find_match_length.h
+index f8853a7..9091665 100644
+--- a/c/enc/find_match_length.h
++++ b/c/enc/find_match_length.h
+@@ -18,9 +18,9 @@ extern "C" {
+ 
+ /* Separate implementation for little-endian 64-bit targets, for speed. */
+ #if defined(BROTLI_TZCNT64) && BROTLI_64_BITS && BROTLI_LITTLE_ENDIAN
+-static BROTLI_INLINE size_t FindMatchLengthWithLimit(const uint8_t* s1,
+-                                                     const uint8_t* s2,
+-                                                     size_t limit) {
++static size_t FindMatchLengthWithLimit(const uint8_t* s1,
++				       const uint8_t* s2,
++				       size_t limit) {
+   size_t matched = 0;
+   size_t limit2 = (limit >> 3) + 1;  /* + 1 is for pre-decrement in while */
+   while (BROTLI_PREDICT_TRUE(--limit2)) {
+@@ -48,9 +48,9 @@ static BROTLI_INLINE size_t FindMatchLengthWithLimit(const uint8_t* s1,
+   return matched;
+ }
+ #else
+-static BROTLI_INLINE size_t FindMatchLengthWithLimit(const uint8_t* s1,
+-                                                     const uint8_t* s2,
+-                                                     size_t limit) {
++static size_t FindMatchLengthWithLimit(const uint8_t* s1,
++				       const uint8_t* s2,
++				       size_t limit) {
+   size_t matched = 0;
+   const uint8_t* s2_limit = s2 + limit;
+   const uint8_t* s2_ptr = s2;
+diff --git a/c/enc/hash_composite_inc.h b/c/enc/hash_composite_inc.h
+index 059237c..e8eb8e7 100644
+--- a/c/enc/hash_composite_inc.h
++++ b/c/enc/hash_composite_inc.h
+@@ -40,7 +40,7 @@ typedef struct HashComposite {
+   const BrotliEncoderParams* params;
+ } HashComposite;
+ 
+-static void FN(Initialize)(HasherCommon* common,
++static BROTLI_NOINLINE void FN(Initialize)(HasherCommon* common,
+     HashComposite* BROTLI_RESTRICT self, const BrotliEncoderParams* params) {
+   self->common = common;
+ 
+@@ -54,7 +54,7 @@ static void FN(Initialize)(HasherCommon* common,
+      those params to all hashers FN(Initialize) */
+ }
+ 
+-static void FN(Prepare)(
++static BROTLI_NOINLINE void FN(Prepare)(
+     HashComposite* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   if (self->fresh) {
+@@ -115,7 +115,7 @@ static BROTLI_INLINE void FN(StitchToPreviousBlock)(
+       ringbuffer, ring_buffer_mask);
+ }
+ 
+-static BROTLI_INLINE void FN(PrepareDistanceCache)(
++static BROTLI_NOINLINE void FN(PrepareDistanceCache)(
+     HashComposite* BROTLI_RESTRICT self, int* BROTLI_RESTRICT distance_cache) {
+   FN_A(PrepareDistanceCache)(&self->ha, distance_cache);
+   FN_B(PrepareDistanceCache)(&self->hb, distance_cache);
+diff --git a/c/enc/hash_forgetful_chain_inc.h b/c/enc/hash_forgetful_chain_inc.h
+index 48e1cdc..2b25506 100644
+--- a/c/enc/hash_forgetful_chain_inc.h
++++ b/c/enc/hash_forgetful_chain_inc.h
+@@ -80,7 +80,7 @@ static FN(Bank)* FN(Banks)(void* extra) {
+   return (FN(Bank)*)(extra);
+ }
+ 
+-static void FN(Initialize)(
++static BROTLI_NOINLINE void FN(Initialize)(
+     HasherCommon* common, HashForgetfulChain* BROTLI_RESTRICT self,
+     const BrotliEncoderParams* params) {
+   self->common = common;
+@@ -90,7 +90,7 @@ static void FN(Initialize)(
+   self->max_hops = (params->quality > 6 ? 7u : 8u) << (params->quality - 4);
+ }
+ 
+-static void FN(Prepare)(
++static BROTLI_NOINLINE void FN(Prepare)(
+     HashForgetfulChain* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   uint32_t* BROTLI_RESTRICT addr = FN(Addr)(self->extra[0]);
+@@ -172,7 +172,7 @@ static BROTLI_INLINE void FN(StitchToPreviousBlock)(
+   }
+ }
+ 
+-static BROTLI_INLINE void FN(PrepareDistanceCache)(
++static BROTLI_NOINLINE void FN(PrepareDistanceCache)(
+     HashForgetfulChain* BROTLI_RESTRICT self,
+     int* BROTLI_RESTRICT distance_cache) {
+   BROTLI_UNUSED(self);
+diff --git a/c/enc/hash_longest_match64_inc.h b/c/enc/hash_longest_match64_inc.h
+index d02435e..52932bf 100644
+--- a/c/enc/hash_longest_match64_inc.h
++++ b/c/enc/hash_longest_match64_inc.h
+@@ -21,8 +21,8 @@ static BROTLI_INLINE size_t FN(StoreLookahead)(void) { return 8; }
+ 
+ /* HashBytes is the function that chooses the bucket to place the address in. */
+ static BROTLI_INLINE uint32_t FN(HashBytes)(const uint8_t* BROTLI_RESTRICT data,
+-                                            const uint64_t mask,
+-                                            const int shift) {
++					    const uint64_t mask,
++					    const int shift) {
+   const uint64_t h = (BROTLI_UNALIGNED_LOAD64LE(data) & mask) * kHashMul64Long;
+   /* The higher bits contain more mixture from the multiplication,
+      so we take our results from there. */
+@@ -57,7 +57,7 @@ typedef struct HashLongestMatch {
+   uint32_t* buckets_;  /* uint32_t[bucket_size * block_size]; */
+ } HashLongestMatch;
+ 
+-static void FN(Initialize)(
++static BROTLI_NOINLINE void FN(Initialize)(
+     HasherCommon* common, HashLongestMatch* BROTLI_RESTRICT self,
+     const BrotliEncoderParams* params) {
+   self->common_ = common;
+@@ -75,7 +75,7 @@ static void FN(Initialize)(
+   self->buckets_ = (uint32_t*)common->extra[1];
+ }
+ 
+-static void FN(Prepare)(
++static BROTLI_NOINLINE void FN(Prepare)(
+     HashLongestMatch* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   uint16_t* BROTLI_RESTRICT num = self->num_;
+@@ -142,7 +142,7 @@ static BROTLI_INLINE void FN(StitchToPreviousBlock)(
+   }
+ }
+ 
+-static BROTLI_INLINE void FN(PrepareDistanceCache)(
++static BROTLI_NOINLINE void FN(PrepareDistanceCache)(
+     HashLongestMatch* BROTLI_RESTRICT self,
+     int* BROTLI_RESTRICT distance_cache) {
+   PrepareDistanceCache(distance_cache, self->num_last_distances_to_check_);
+diff --git a/c/enc/hash_longest_match_inc.h b/c/enc/hash_longest_match_inc.h
+index 788e9ef..d5ef61f 100644
+--- a/c/enc/hash_longest_match_inc.h
++++ b/c/enc/hash_longest_match_inc.h
+@@ -54,7 +54,7 @@ typedef struct HashLongestMatch {
+   uint32_t* buckets_;  /* uint32_t[bucket_size * block_size]; */
+ } HashLongestMatch;
+ 
+-static void FN(Initialize)(
++static BROTLI_NOINLINE void FN(Initialize)(
+     HasherCommon* common, HashLongestMatch* BROTLI_RESTRICT self,
+     const BrotliEncoderParams* params) {
+   self->common_ = common;
+@@ -71,7 +71,7 @@ static void FN(Initialize)(
+       common->params.num_last_distances_to_check;
+ }
+ 
+-static void FN(Prepare)(
++static BROTLI_NOINLINE void FN(Prepare)(
+     HashLongestMatch* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   uint16_t* BROTLI_RESTRICT num = self->num_;
+@@ -134,7 +134,7 @@ static BROTLI_INLINE void FN(StitchToPreviousBlock)(
+   }
+ }
+ 
+-static BROTLI_INLINE void FN(PrepareDistanceCache)(
++static BROTLI_NOINLINE void FN(PrepareDistanceCache)(
+     HashLongestMatch* BROTLI_RESTRICT self,
+     int* BROTLI_RESTRICT distance_cache) {
+   PrepareDistanceCache(distance_cache, self->num_last_distances_to_check_);
+diff --git a/c/enc/hash_longest_match_quickly_inc.h b/c/enc/hash_longest_match_quickly_inc.h
+index 54397ef..5773f00 100644
+--- a/c/enc/hash_longest_match_quickly_inc.h
++++ b/c/enc/hash_longest_match_quickly_inc.h
+@@ -43,7 +43,7 @@ typedef struct HashLongestMatchQuickly {
+   uint32_t* buckets_;  /* uint32_t[BUCKET_SIZE]; */
+ } HashLongestMatchQuickly;
+ 
+-static void FN(Initialize)(
++static BROTLI_NOINLINE void FN(Initialize)(
+     HasherCommon* common, HashLongestMatchQuickly* BROTLI_RESTRICT self,
+     const BrotliEncoderParams* params) {
+   self->common = common;
+@@ -52,7 +52,7 @@ static void FN(Initialize)(
+   self->buckets_ = (uint32_t*)common->extra[0];
+ }
+ 
+-static void FN(Prepare)(
++static BROTLI_NOINLINE void FN(Prepare)(
+     HashLongestMatchQuickly* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   uint32_t* BROTLI_RESTRICT buckets = self->buckets_;
+@@ -129,7 +129,7 @@ static BROTLI_INLINE void FN(StitchToPreviousBlock)(
+   }
+ }
+ 
+-static BROTLI_INLINE void FN(PrepareDistanceCache)(
++static BROTLI_NOINLINE void FN(PrepareDistanceCache)(
+     HashLongestMatchQuickly* BROTLI_RESTRICT self,
+     int* BROTLI_RESTRICT distance_cache) {
+   BROTLI_UNUSED(self);
+diff --git a/c/enc/hash_rolling_inc.h b/c/enc/hash_rolling_inc.h
+index 4c7a6b1..c4a4b29 100644
+--- a/c/enc/hash_rolling_inc.h
++++ b/c/enc/hash_rolling_inc.h
+@@ -51,7 +51,7 @@ typedef struct HashRolling {
+   uint32_t factor_remove;
+ } HashRolling;
+ 
+-static void FN(Initialize)(
++static BROTLI_NOINLINE void FN(Initialize)(
+     HasherCommon* common, HashRolling* BROTLI_RESTRICT self,
+     const BrotliEncoderParams* params) {
+   size_t i;
+@@ -75,7 +75,7 @@ static void FN(Initialize)(
+   BROTLI_UNUSED(params);
+ }
+ 
+-static void FN(Prepare)(HashRolling* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
++static BROTLI_NOINLINE void FN(Prepare)(HashRolling* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   size_t i;
+   /* Too small size, cannot use this hasher. */
+@@ -140,7 +140,7 @@ static BROTLI_INLINE void FN(StitchToPreviousBlock)(
+   BROTLI_UNUSED(num_bytes);
+ }
+ 
+-static BROTLI_INLINE void FN(PrepareDistanceCache)(
++static BROTLI_NOINLINE void FN(PrepareDistanceCache)(
+     HashRolling* BROTLI_RESTRICT self,
+     int* BROTLI_RESTRICT distance_cache) {
+   BROTLI_UNUSED(self);
+diff --git a/c/enc/hash_to_binary_tree_inc.h b/c/enc/hash_to_binary_tree_inc.h
+index a639d2d..5a070f7 100644
+--- a/c/enc/hash_to_binary_tree_inc.h
++++ b/c/enc/hash_to_binary_tree_inc.h
+@@ -54,7 +54,7 @@ typedef struct HashToBinaryTree {
+   uint32_t* forest_;  /* uint32_t[2 * num_nodes] */
+ } HashToBinaryTree;
+ 
+-static void FN(Initialize)(
++static BROTLI_NOINLINE void FN(Initialize)(
+     HasherCommon* common, HashToBinaryTree* BROTLI_RESTRICT self,
+     const BrotliEncoderParams* params) {
+   self->buckets_ = (uint32_t*)common->extra[0];
+@@ -64,7 +64,7 @@ static void FN(Initialize)(
+   self->invalid_pos_ = (uint32_t)(0 - self->window_mask_);
+ }
+ 
+-static void FN(Prepare)
++static BROTLI_NOINLINE void FN(Prepare)
+     (HashToBinaryTree* BROTLI_RESTRICT self, BROTLI_BOOL one_shot,
+     size_t input_size, const uint8_t* BROTLI_RESTRICT data) {
+   uint32_t invalid_pos = self->invalid_pos_;
+diff --git a/c/enc/memory.c b/c/enc/memory.c
+index f6ed7e3..93e103f 100644
+--- a/c/enc/memory.c
++++ b/c/enc/memory.c
+@@ -47,123 +47,141 @@ void BrotliInitMemoryManager(
+ #endif  /* BROTLI_ENCODER_EXIT_ON_OOM */
+ }
+ 
+-#if defined(BROTLI_ENCODER_EXIT_ON_OOM)
+ 
+ void* BrotliAllocate(MemoryManager* m, size_t n) {
+-  void* result = m->alloc_func(m->opaque, n);
++  BROTLI_UNUSED(m);  
++  void* result = malloc(n);
+   if (!result) exit(EXIT_FAILURE);
+   return result;
+ }
+ 
+ void BrotliFree(MemoryManager* m, void* p) {
+-  m->free_func(m->opaque, p);
++  BROTLI_UNUSED(m);  
++  free(p);
+ }
+ 
+ void BrotliWipeOutMemoryManager(MemoryManager* m) {
+   BROTLI_UNUSED(m);
+ }
+ 
+-#else  /* BROTLI_ENCODER_EXIT_ON_OOM */
+-
+-static void SortPointers(void** items, const size_t n) {
+-  /* Shell sort. */
+-  static const size_t gaps[] = {23, 10, 4, 1};
+-  int g = 0;
+-  for (; g < 4; ++g) {
+-    size_t gap = gaps[g];
+-    size_t i;
+-    for (i = gap; i < n; ++i) {
+-      size_t j = i;
+-      void* tmp = items[i];
+-      for (; j >= gap && tmp < items[j - gap]; j -= gap) {
+-        items[j] = items[j - gap];
+-      }
+-      items[j] = tmp;
+-    }
+-  }
+-}
+-
+-static size_t Annihilate(void** a, size_t a_len, void** b, size_t b_len) {
+-  size_t a_read_index = 0;
+-  size_t b_read_index = 0;
+-  size_t a_write_index = 0;
+-  size_t b_write_index = 0;
+-  size_t annihilated = 0;
+-  while (a_read_index < a_len && b_read_index < b_len) {
+-    if (a[a_read_index] == b[b_read_index]) {
+-      a_read_index++;
+-      b_read_index++;
+-      annihilated++;
+-    } else if (a[a_read_index] < b[b_read_index]) {
+-      a[a_write_index++] = a[a_read_index++];
+-    } else {
+-      b[b_write_index++] = b[b_read_index++];
+-    }
+-  }
+-  while (a_read_index < a_len) a[a_write_index++] = a[a_read_index++];
+-  while (b_read_index < b_len) b[b_write_index++] = b[b_read_index++];
+-  return annihilated;
+-}
+-
+-static void CollectGarbagePointers(MemoryManager* m) {
+-  size_t annihilated;
+-  SortPointers(m->pointers + NEW_ALLOCATED_OFFSET, m->new_allocated);
+-  SortPointers(m->pointers + NEW_FREED_OFFSET, m->new_freed);
+-  annihilated = Annihilate(
+-      m->pointers + NEW_ALLOCATED_OFFSET, m->new_allocated,
+-      m->pointers + NEW_FREED_OFFSET, m->new_freed);
+-  m->new_allocated -= annihilated;
+-  m->new_freed -= annihilated;
+-
+-  if (m->new_freed != 0) {
+-    annihilated = Annihilate(
+-        m->pointers + PERM_ALLOCATED_OFFSET, m->perm_allocated,
+-        m->pointers + NEW_FREED_OFFSET, m->new_freed);
+-    m->perm_allocated -= annihilated;
+-    m->new_freed -= annihilated;
+-    BROTLI_DCHECK(m->new_freed == 0);
+-  }
+-
+-  if (m->new_allocated != 0) {
+-    BROTLI_DCHECK(m->perm_allocated + m->new_allocated <= MAX_PERM_ALLOCATED);
+-    memcpy(m->pointers + PERM_ALLOCATED_OFFSET + m->perm_allocated,
+-           m->pointers + NEW_ALLOCATED_OFFSET,
+-           sizeof(void*) * m->new_allocated);
+-    m->perm_allocated += m->new_allocated;
+-    m->new_allocated = 0;
+-    SortPointers(m->pointers + PERM_ALLOCATED_OFFSET, m->perm_allocated);
+-  }
+-}
+-
+-void* BrotliAllocate(MemoryManager* m, size_t n) {
+-  void* result = m->alloc_func(m->opaque, n);
+-  if (!result) {
+-    m->is_oom = BROTLI_TRUE;
+-    return NULL;
+-  }
+-  if (m->new_allocated == MAX_NEW_ALLOCATED) CollectGarbagePointers(m);
+-  m->pointers[NEW_ALLOCATED_OFFSET + (m->new_allocated++)] = result;
+-  return result;
+-}
+-
+-void BrotliFree(MemoryManager* m, void* p) {
+-  if (!p) return;
+-  m->free_func(m->opaque, p);
+-  if (m->new_freed == MAX_NEW_FREED) CollectGarbagePointers(m);
+-  m->pointers[NEW_FREED_OFFSET + (m->new_freed++)] = p;
+-}
+-
+-void BrotliWipeOutMemoryManager(MemoryManager* m) {
+-  size_t i;
+-  CollectGarbagePointers(m);
+-  /* Now all unfreed pointers are in perm-allocated list. */
+-  for (i = 0; i < m->perm_allocated; ++i) {
+-    m->free_func(m->opaque, m->pointers[PERM_ALLOCATED_OFFSET + i]);
+-  }
+-  m->perm_allocated = 0;
+-}
+-
+-#endif  /* BROTLI_ENCODER_EXIT_ON_OOM */
++  
++/* #if defined(BROTLI_ENCODER_EXIT_ON_OOM) */
++
++/* void* BrotliAllocate(MemoryManager* m, size_t n) { */
++/*   void* result = m->alloc_func(m->opaque, n); */
++/*   if (!result) exit(EXIT_FAILURE); */
++/*   return result; */
++/* } */
++
++/* void BrotliFree(MemoryManager* m, void* p) { */
++/*   m->free_func(m->opaque, p); */
++/* } */
++
++/* void BrotliWipeOutMemoryManager(MemoryManager* m) { */
++/*   BROTLI_UNUSED(m); */
++/* } */
++
++/* #else  /\* BROTLI_ENCODER_EXIT_ON_OOM *\/ */
++
++/* static void SortPointers(void** items, const size_t n) { */
++/*   /\* Shell sort. *\/ */
++/*   static const size_t gaps[] = {23, 10, 4, 1}; */
++/*   int g = 0; */
++/*   for (; g < 4; ++g) { */
++/*     size_t gap = gaps[g]; */
++/*     size_t i; */
++/*     for (i = gap; i < n; ++i) { */
++/*       size_t j = i; */
++/*       void* tmp = items[i]; */
++/*       for (; j >= gap && tmp < items[j - gap]; j -= gap) { */
++/*         items[j] = items[j - gap]; */
++/*       } */
++/*       items[j] = tmp; */
++/*     } */
++/*   } */
++/* } */
++
++/* static size_t Annihilate(void** a, size_t a_len, void** b, size_t b_len) { */
++/*   size_t a_read_index = 0; */
++/*   size_t b_read_index = 0; */
++/*   size_t a_write_index = 0; */
++/*   size_t b_write_index = 0; */
++/*   size_t annihilated = 0; */
++/*   while (a_read_index < a_len && b_read_index < b_len) { */
++/*     if (a[a_read_index] == b[b_read_index]) { */
++/*       a_read_index++; */
++/*       b_read_index++; */
++/*       annihilated++; */
++/*     } else if (a[a_read_index] < b[b_read_index]) { */
++/*       a[a_write_index++] = a[a_read_index++]; */
++/*     } else { */
++/*       b[b_write_index++] = b[b_read_index++]; */
++/*     } */
++/*   } */
++/*   while (a_read_index < a_len) a[a_write_index++] = a[a_read_index++]; */
++/*   while (b_read_index < b_len) b[b_write_index++] = b[b_read_index++]; */
++/*   return annihilated; */
++/* } */
++
++/* static void CollectGarbagePointers(MemoryManager* m) { */
++/*   size_t annihilated; */
++/*   SortPointers(m->pointers + NEW_ALLOCATED_OFFSET, m->new_allocated); */
++/*   SortPointers(m->pointers + NEW_FREED_OFFSET, m->new_freed); */
++/*   annihilated = Annihilate( */
++/*       m->pointers + NEW_ALLOCATED_OFFSET, m->new_allocated, */
++/*       m->pointers + NEW_FREED_OFFSET, m->new_freed); */
++/*   m->new_allocated -= annihilated; */
++/*   m->new_freed -= annihilated; */
++
++/*   if (m->new_freed != 0) { */
++/*     annihilated = Annihilate( */
++/*         m->pointers + PERM_ALLOCATED_OFFSET, m->perm_allocated, */
++/*         m->pointers + NEW_FREED_OFFSET, m->new_freed); */
++/*     m->perm_allocated -= annihilated; */
++/*     m->new_freed -= annihilated; */
++/*     BROTLI_DCHECK(m->new_freed == 0); */
++/*   } */
++
++/*   if (m->new_allocated != 0) { */
++/*     BROTLI_DCHECK(m->perm_allocated + m->new_allocated <= MAX_PERM_ALLOCATED); */
++/*     memcpy(m->pointers + PERM_ALLOCATED_OFFSET + m->perm_allocated, */
++/*            m->pointers + NEW_ALLOCATED_OFFSET, */
++/*            sizeof(void*) * m->new_allocated); */
++/*     m->perm_allocated += m->new_allocated; */
++/*     m->new_allocated = 0; */
++/*     SortPointers(m->pointers + PERM_ALLOCATED_OFFSET, m->perm_allocated); */
++/*   } */
++/* } */
++
++/* void* BrotliAllocate(MemoryManager* m, size_t n) { */
++/*   void* result = m->alloc_func(m->opaque, n); */
++/*   if (!result) { */
++/*     m->is_oom = BROTLI_TRUE; */
++/*     return NULL; */
++/*   } */
++/*   if (m->new_allocated == MAX_NEW_ALLOCATED) CollectGarbagePointers(m); */
++/*   m->pointers[NEW_ALLOCATED_OFFSET + (m->new_allocated++)] = result; */
++/*   return result; */
++/* } */
++
++/* void BrotliFree(MemoryManager* m, void* p) { */
++/*   if (!p) return; */
++/*   m->free_func(m->opaque, p); */
++/*   if (m->new_freed == MAX_NEW_FREED) CollectGarbagePointers(m); */
++/*   m->pointers[NEW_FREED_OFFSET + (m->new_freed++)] = p; */
++/* } */
++
++/* void BrotliWipeOutMemoryManager(MemoryManager* m) { */
++/*   size_t i; */
++/*   CollectGarbagePointers(m); */
++/*   /\* Now all unfreed pointers are in perm-allocated list. *\/ */
++/*   for (i = 0; i < m->perm_allocated; ++i) { */
++/*     m->free_func(m->opaque, m->pointers[PERM_ALLOCATED_OFFSET + i]); */
++/*   } */
++/*   m->perm_allocated = 0; */
++/* } */
++
++/* #endif  /\* BROTLI_ENCODER_EXIT_ON_OOM *\/ */
+ 
+ #if defined(__cplusplus) || defined(c_plusplus)
+ }  /* extern "C" */
+diff --git a/c/enc/static_dict.c b/c/enc/static_dict.c
+index 7299ab7..4181243 100644
+--- a/c/enc/static_dict.c
++++ b/c/enc/static_dict.c
+@@ -16,7 +16,7 @@
+ extern "C" {
+ #endif
+ 
+-static BROTLI_INLINE uint32_t Hash(const uint8_t* data) {
++static uint32_t Hash(const uint8_t* data) {
+   uint32_t h = BROTLI_UNALIGNED_LOAD32LE(data) * kDictHashMul32;
+   /* The higher bits contain more mixture from the multiplication,
+      so we take our results from there. */
+@@ -39,7 +39,7 @@ static BROTLI_INLINE size_t DictMatchLength(const BrotliDictionary* dictionary,
+                                   BROTLI_MIN(size_t, len, maxlen));
+ }
+ 
+-static BROTLI_INLINE BROTLI_BOOL IsMatch(const BrotliDictionary* dictionary,
++static BROTLI_BOOL IsMatch(const BrotliDictionary* dictionary,
+     DictWord w, const uint8_t* data, size_t max_length) {
+   if (w.len > max_length) {
+     return BROTLI_FALSE;
+@@ -74,7 +74,7 @@ static BROTLI_INLINE BROTLI_BOOL IsMatch(const BrotliDictionary* dictionary,
+   }
+ }
+ 
+-BROTLI_BOOL BrotliFindAllStaticDictionaryMatches(
++BROTLI_NOINLINE BROTLI_BOOL BrotliFindAllStaticDictionaryMatches(
+     const BrotliEncoderDictionary* dictionary, const uint8_t* data,
+     size_t min_length, size_t max_length, uint32_t* matches) {
+   BROTLI_BOOL has_found_match = BROTLI_FALSE;
+diff --git a/c/enc/write_bits.h b/c/enc/write_bits.h
+index f6f88b4..1680ef7 100644
+--- a/c/enc/write_bits.h
++++ b/c/enc/write_bits.h
+@@ -31,10 +31,10 @@ extern "C" {
+ 
+    For n bits, we take the last 5 bits, OR that with high bits in BYTE-0,
+    and locate the rest in BYTE+1, BYTE+2, etc. */
+-static BROTLI_INLINE void BrotliWriteBits(size_t n_bits,
+-                                          uint64_t bits,
+-                                          size_t* BROTLI_RESTRICT pos,
+-                                          uint8_t* BROTLI_RESTRICT array) {
++static BROTLI_NOINLINE void BrotliWriteBits(size_t n_bits,
++					    uint64_t bits,
++					    size_t* BROTLI_RESTRICT pos,
++					    uint8_t* BROTLI_RESTRICT array) {
+   BROTLI_LOG(("WriteBits  %2d  0x%08x%08x  %10d\n", (int)n_bits,
+       (uint32_t)(bits >> 32), (uint32_t)(bits & 0xFFFFFFFF),
+       (int)*pos));
+diff --git a/c/tools/brotli.c b/c/tools/brotli.c
+index 77752b2..da62470 100644
+--- a/c/tools/brotli.c
++++ b/c/tools/brotli.c
+@@ -60,6 +60,10 @@
+ #define ftell _ftelli64
+ #endif
+ 
++extern int  __CRAB_nd_int(void);
++//extern uint8_t  __CRAB_nd_uint8_t();
++//extern uint16_t  __CRAB_nd_uint16_t();    
++
+ static FILE* ms_fopen(const char* filename, const char* mode) {
+   FILE* result = 0;
+   fopen_s(&result, filename, mode);
+@@ -101,7 +105,7 @@ typedef struct {
+   BROTLI_BOOL large_window;
+   const char* output_path;
+   const char* suffix;
+-  int not_input_indices[MAX_OPTIONS];
++  //int not_input_indices[MAX_OPTIONS];
+   size_t longest_path_len;
+   size_t input_count;
+ 
+@@ -200,7 +204,7 @@ static Command ParseParams(Context* params) {
+     size_t arg_len = arg ? strlen(arg) : 0;
+ 
+     if (arg_len == 0) {
+-      params->not_input_indices[next_option_index++] = i;
++      //params->not_input_indices[next_option_index++] = i;
+       continue;
+     }
+ 
+@@ -221,7 +225,7 @@ static Command ParseParams(Context* params) {
+     }
+ 
+     /* Not a file entry. */
+-    params->not_input_indices[next_option_index++] = i;
++    //params->not_input_indices[next_option_index++] = i;
+ 
+     /* '--' entry stop parsing arguments. */
+     if (arg_len == 2 && arg[1] == '-') {
+@@ -324,7 +328,7 @@ static Command ParseParams(Context* params) {
+           fprintf(stderr, "expected parameter for argument -%c\n", c);
+           return COMMAND_INVALID;
+         }
+-        params->not_input_indices[next_option_index++] = i;
++        //params->not_input_indices[next_option_index++] = i;
+         if (c == 'o') {
+           if (output_set) {
+             fprintf(stderr, "write to standard output already set (-o)\n");
+@@ -697,7 +701,7 @@ static BROTLI_BOOL NextFile(Context* context) {
+   }
+ 
+   /* Skip option arguments. */
+-  while (context->iterator == context->not_input_indices[context->ignore]) {
++  while (context->iterator == __CRAB_nd_int() /*context->not_input_indices[context->ignore]*/) {
+     context->iterator++;
+     context->ignore++;
+   }
+@@ -881,7 +885,7 @@ static void PrintFileProcessingProgress(Context* context) {
+   fprintf(stderr, " in %1.2f sec", (double)(context->end_time - context->start_time) / CLOCKS_PER_SEC);
+ }
+ 
+-static BROTLI_BOOL DecompressFile(Context* context, BrotliDecoderState* s) {
++static BROTLI_NOINLINE BROTLI_BOOL DecompressFile(Context* context, BrotliDecoderState* s) {
+   BrotliDecoderResult result = BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT;
+   InitializeBuffers(context);
+   for (;;) {
+@@ -921,7 +925,7 @@ static BROTLI_BOOL DecompressFile(Context* context, BrotliDecoderState* s) {
+   }
+ }
+ 
+-static BROTLI_BOOL DecompressFiles(Context* context) {
++static BROTLI_NOINLINE BROTLI_BOOL DecompressFiles(Context* context) {
+   while (NextFile(context)) {
+     BROTLI_BOOL is_ok = BROTLI_TRUE;
+     BrotliDecoderState* s = BrotliDecoderCreateInstance(NULL, NULL, NULL);
+@@ -947,7 +951,7 @@ static BROTLI_BOOL DecompressFiles(Context* context) {
+   return BROTLI_TRUE;
+ }
+ 
+-static BROTLI_BOOL CompressFile(Context* context, BrotliEncoderState* s) {
++static BROTLI_NOINLINE BROTLI_BOOL CompressFile(Context* context, BrotliEncoderState* s) {
+   BROTLI_BOOL is_eof = BROTLI_FALSE;
+   InitializeBuffers(context);
+   for (;;) {
+@@ -983,7 +987,7 @@ static BROTLI_BOOL CompressFile(Context* context, BrotliEncoderState* s) {
+   }
+ }
+ 
+-static BROTLI_BOOL CompressFiles(Context* context) {
++static BROTLI_NOINLINE BROTLI_BOOL CompressFiles(Context* context) {
+   while (NextFile(context)) {
+     BROTLI_BOOL is_ok = BROTLI_TRUE;
+     BrotliEncoderState* s = BrotliEncoderCreateInstance(NULL, NULL, NULL);
+@@ -1052,7 +1056,7 @@ int main(int argc, char** argv) {
+   context.large_window = BROTLI_FALSE;
+   context.output_path = NULL;
+   context.suffix = DEFAULT_SUFFIX;
+-  for (i = 0; i < MAX_OPTIONS; ++i) context.not_input_indices[i] = 0;
++  //for (i = 0; i < MAX_OPTIONS; ++i) context.not_input_indices[i] = 0;
+   context.longest_path_len = 1;
+   context.input_count = 0;
+ 

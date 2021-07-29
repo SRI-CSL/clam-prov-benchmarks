@@ -1,0 +1,89 @@
+Binary files vsftpd-3.0.3/.ftpcmdio.h.swp and vsftpd-3.0.3-modified/.ftpcmdio.h.swp differ
+diff -ruN vsftpd-3.0.3/Makefile vsftpd-3.0.3-modified/Makefile
+--- vsftpd-3.0.3/Makefile	2012-09-16 02:27:35.000000000 -0500
++++ vsftpd-3.0.3-modified/Makefile	2020-12-22 16:18:54.000000000 -0600
+@@ -1,16 +1,17 @@
+ # Makefile for systems with GNU tools
+-CC 	=	gcc
+-INSTALL	=	install
++CC 	= gclang
++INSTALL	= install
++INSTALL_DIR=./install
+ IFLAGS  = -idirafter dummyinc
+-#CFLAGS = -g
+-CFLAGS	=	-O2 -fPIE -fstack-protector --param=ssp-buffer-size=4 \
+-	-Wall -W -Wshadow -Werror -Wformat-security \
++CFLAGS	= -g -O2 -fPIE -fstack-protector --param=ssp-buffer-size=4 \
++	-Wall -W -Wshadow  -Wformat-security \
+ 	-D_FORTIFY_SOURCE=2 \
++	#-Werror
+ 	#-pedantic -Wconversion
+ 
+ LIBS	=	`./vsf_findlibs.sh`
+ LINK	=	-Wl,-s
+-LDFLAGS	=	-fPIE -pie -Wl,-z,relro -Wl,-z,now
++LDFLAGS	=	-fPIE -pie 
+ 
+ OBJS	=	main.o utility.o prelogin.o ftpcmdio.o postlogin.o privsock.o \
+ 		tunables.o ftpdataio.o secbuf.o ls.o \
+@@ -29,21 +30,8 @@
+ 	$(CC) -o vsftpd $(OBJS) $(LINK) $(LDFLAGS) $(LIBS)
+ 
+ install:
+-	if [ -x /usr/local/sbin ]; then \
+-		$(INSTALL) -m 755 vsftpd /usr/local/sbin/vsftpd; \
+-	else \
+-		$(INSTALL) -m 755 vsftpd /usr/sbin/vsftpd; fi
+-	if [ -x /usr/local/man ]; then \
+-		$(INSTALL) -m 644 vsftpd.8 /usr/local/man/man8/vsftpd.8; \
+-		$(INSTALL) -m 644 vsftpd.conf.5 /usr/local/man/man5/vsftpd.conf.5; \
+-	elif [ -x /usr/share/man ]; then \
+-		$(INSTALL) -m 644 vsftpd.8 /usr/share/man/man8/vsftpd.8; \
+-		$(INSTALL) -m 644 vsftpd.conf.5 /usr/share/man/man5/vsftpd.conf.5; \
+-	else \
+-		$(INSTALL) -m 644 vsftpd.8 /usr/man/man8/vsftpd.8; \
+-		$(INSTALL) -m 644 vsftpd.conf.5 /usr/man/man5/vsftpd.conf.5; fi
+-	if [ -x /etc/xinetd.d ]; then \
+-		$(INSTALL) -m 644 xinetd.d/vsftpd /etc/xinetd.d/vsftpd; fi
++	$(INSTALL) -m 755 vsftpd ${INSTALL_DIR}/vsftpd;
++	$(INSTALL) -m 644 xinetd.d/vsftpd ${INSTALL_DIR}/xinetd.d/vsftpd
+ 
+ clean:
+ 	rm -f *.o *.swp vsftpd
+diff -ruN vsftpd-3.0.3/defs.h vsftpd-3.0.3-modified/defs.h
+--- vsftpd-3.0.3/defs.h	2015-07-20 18:03:17.000000000 -0500
++++ vsftpd-3.0.3-modified/defs.h	2020-12-22 15:55:41.000000000 -0600
+@@ -21,5 +21,8 @@
+ #define VSFTP_PRIVSOCK_MAXSTR   VSFTP_DATA_BUFSIZE * 2
+ #define VSFTP_AS_LIMIT          200UL * 1024 * 1024
+ 
++#define WTMPX_FILE             "/var/log/wtmpx"
++#define UTMPX_FILE             "/var/run/utmpx"
++
+ #endif /* VSF_DEFS_H */
+ 
+diff -ruN vsftpd-3.0.3/sysdeputil.c vsftpd-3.0.3-modified/sysdeputil.c
+--- vsftpd-3.0.3/sysdeputil.c	2012-09-15 23:18:04.000000000 -0500
++++ vsftpd-3.0.3-modified/sysdeputil.c	2020-12-22 16:19:13.000000000 -0600
+@@ -64,6 +64,9 @@
+ #include <utmpx.h>
+ 
+ /* BEGIN config */
++#if defined(__APPLE__)
++#undef VSF_SYSDEP_HAVE_UTMPX
++#endif
+ #if defined(__linux__)
+   #include <errno.h>
+   #include <syscall.h>
+diff -ruN vsftpd-3.0.3/vsf_findlibs.sh vsftpd-3.0.3-modified/vsf_findlibs.sh
+--- vsftpd-3.0.3/vsf_findlibs.sh	2012-03-27 21:17:41.000000000 -0500
++++ vsftpd-3.0.3-modified/vsf_findlibs.sh	2020-12-22 16:19:45.000000000 -0600
+@@ -21,6 +21,8 @@
+   locate_library /usr/lib/libpam.sl && echo "-lpam";
+   # AIX ends shared libraries with .a
+   locate_library /usr/lib/libpam.a && echo "-lpam";
++  # Mac OS X / Darwin shared libraries with .dylib
++  locate_library /usr/lib/libpam.dylib && echo "-lpam";
+ else
+   locate_library /lib/libcrypt.so && echo "-lcrypt";
+   locate_library /usr/lib/libcrypt.so && echo "-lcrypt";
