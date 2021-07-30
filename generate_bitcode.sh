@@ -27,7 +27,6 @@ do
         echo "Found $bc"
     else
         echo "Error: $bc not found. Check \"$bc.log\""
-        exit 1
     fi
 done
 echo "OK!"
