@@ -6,7 +6,6 @@ source config.sh
 #CLAM_PROV_CONFIG=./clam-prov-install/config/sources-sinks.config
  
 CLAM_PROV_CMD=/homes/jorge/Repos/clam-prov/install-release/bin/clam-prov.py
-CLAM_PROV_CONFIG=/homes/jorge/Repos/clam-prov/install-release/config/sources-sinks.config
 
 if [ ! -f "$CLAM_PROV_CMD" ]; then
     echo "Error: $CLAM_PROV_CMD not found. Run \"./install_clam-prov.sh\"."
@@ -22,7 +21,7 @@ for bc in "${bitcode[@]}"
 do
     bc="${INSTALL_BITCODE}/$bc"
     ${CLAM_PROV_CMD} ${bc} --print-sources-sinks
-    time ${CLAM_PROV_CMD} ${bc} --devirt-functions=sea-dsa --add-metadata-config=${CLAM_PROV_CONFIG} --dependency-map=${bc}.output -o ${bc}.tagged.bc
+    time ${CLAM_PROV_CMD} ${bc} --devirt-functions=sea-dsa --dependency-map=${bc}.output -o ${bc}.tagged.bc
 done
 
 exit 0
